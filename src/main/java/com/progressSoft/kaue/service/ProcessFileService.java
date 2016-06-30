@@ -3,7 +3,6 @@ package com.progressSoft.kaue.service;
 import com.progressSoft.kaue.dao.TotalDAO;
 import com.progressSoft.kaue.dao.TransactionDAO;
 import com.progressSoft.kaue.dao.TransactionErrorDAO;
-import com.progressSoft.kaue.entity.Total;
 import com.progressSoft.kaue.entity.Transaction;
 import com.progressSoft.kaue.entity.TransactionError;
 import org.apache.commons.csv.CSVFormat;
@@ -12,13 +11,13 @@ import org.apache.commons.csv.CSVRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.aggregation.Aggregation;
-import org.springframework.data.mongodb.core.aggregation.AggregationResults;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.Collection;
+import java.util.Date;
 import java.util.HashSet;
 
 /**
@@ -35,11 +34,13 @@ public class ProcessFileService {
     @Autowired
     private TotalDAO totalDAO;
 
-
     @Autowired
     private TransactionErrorDAO transactionErrorDAO;
 
-    public void processFile(File file)  {
+
+    private final SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+
+    public void processFile(final File file)  {
 
         try {
             final Reader reader = new InputStreamReader(new FileInputStream(file));
@@ -51,6 +52,7 @@ public class ProcessFileService {
             for (CSVRecord csvRecord : parser) {
                 if (csvRecord.get("id").isEmpty()
                         || csvRecord.get("from").isEmpty()
+                        || csvRecord.get("time").isEmpty()
                         || csvRecord.get("to").isEmpty()
                         ||  csvRecord.get("amount").isEmpty()
                 ){
@@ -61,13 +63,26 @@ public class ProcessFileService {
 
                     transactionsErrors.add(transactionError);
                 }else {
-                    Transaction transaction = new Transaction();
-                    transaction.setId(csvRecord.get("id"));
-                    transaction.setFromCurrency(csvRecord.get("from"));
-                    transaction.setToCurrency(csvRecord.get("to"));
-                    transaction.setAmount(Double.valueOf(csvRecord.get("amount")));
+                    try {
+                        Date time = sdf.parse(csvRecord.get("time"));
 
-                    transactions.add(transaction);
+                        Transaction transaction = new Transaction();
+                        transaction.setId(csvRecord.get("id"));
+                        transaction.setFromCurrency(csvRecord.get("from"));
+                        transaction.setToCurrency(csvRecord.get("to"));
+                        transaction.setAmount(Double.valueOf(csvRecord.get("amount")));
+                        transaction.setTime(time);
+                        transactions.add(transaction);
+
+                    } catch (ParseException e) {
+                        TransactionError transactionError = new TransactionError();
+                        transactionError.setError("Invalid date format, the format should be yyyy-MM-dd'T'HH:mm:ss");
+                        transactionError.setFile(file.getName());
+                        transactionError.setLine(csvRecord.getRecordNumber());
+                        transactionsErrors.add(transactionError);
+                    }
+
+
                 }
             }
 
